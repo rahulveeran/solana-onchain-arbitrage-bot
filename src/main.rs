@@ -5,6 +5,7 @@ mod dex;
 mod pools;
 mod refresh;
 mod transaction;
+mod discovery;
 
 use clap::{App, Arg};
 use tracing::{info, Level};

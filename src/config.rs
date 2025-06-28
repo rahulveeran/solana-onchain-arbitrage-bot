@@ -7,6 +7,7 @@ pub struct Config {
     pub routing: RoutingConfig,
     pub rpc: RpcConfig,
     pub spam: Option<SpamConfig>,
+    pub bitquery: BitqueryConfig,
     pub wallet: WalletConfig,
     pub flashloan: Option<FlashloanConfig>,
 }
@@ -57,6 +58,12 @@ pub struct SpamConfig {
     pub sending_rpc_urls: Vec<String>,
     pub compute_unit_price: u64,
     pub max_retries: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct BitqueryConfig {
+    #[serde(deserialize_with = "serde_string_or_env")]
+    pub api_key: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

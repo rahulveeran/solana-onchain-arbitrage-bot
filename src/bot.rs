@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::refresh::initialize_pool_data;
 use crate::transaction::build_and_send_transaction;
+use crate::discovery::discover_pools;
 use anyhow::Context;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::address_lookup_table::AddressLookupTableAccount;
@@ -19,7 +20,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 pub async fn run_bot(config_path: &str) -> anyhow::Result<()> {
-    let config = Config::load(config_path)?;
+    let mut config = Config::load(config_path)?;
     info!("Configuration loaded successfully");
 
     let rpc_client = Arc::new(RpcClient::new(config.rpc.url.clone()));
@@ -52,7 +53,28 @@ pub async fn run_bot(config_path: &str) -> anyhow::Result<()> {
         blockhash_refresher(blockhash_client, blockhash_cache, refresh_interval).await;
     });
 
-    for mint_config in &config.routing.mint_config_list {
+    // Periodically rediscover pools every 5 minutes
+    let discovery_key = config.bitquery.api_key.clone();
+    let discovery_tokens: Vec<String> = config
+        .routing
+        .mint_config_list
+        .iter()
+        .map(|c| c.mint.clone())
+        .collect();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            for token in &discovery_tokens {
+                match discover_pools(token, &discovery_key).await {
+                    Ok(pools) => info!("Rediscovered pools for {}", token),
+                    Err(e) => warn!("Pool rediscovery failed for {}: {:?}", token, e),
+                }
+            }
+        }
+    });
+
+    for mint_config in &mut config.routing.mint_config_list {
         let wallet_token_account = get_associated_token_address(
             &wallet_kp.pubkey(),
             &Pubkey::from_str(&mint_config.mint).unwrap(),
@@ -107,6 +129,67 @@ pub async fn run_bot(config_path: &str) -> anyhow::Result<()> {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Discover pool addresses using GraphQL if not provided
+    for mint_config in &mut config.routing.mint_config_list {
+        match discover_pools(&mint_config.mint, &config.bitquery.api_key).await {
+            Ok(discovered) => {
+                if mint_config.raydium_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.raydium_pool_list.is_empty() {
+                        mint_config.raydium_pool_list = Some(discovered.raydium_pool_list);
+                    }
+                }
+                if mint_config.raydium_cp_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.raydium_cp_pool_list.is_empty() {
+                        mint_config.raydium_cp_pool_list = Some(discovered.raydium_cp_pool_list);
+                    }
+                }
+                if mint_config.raydium_clmm_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.raydium_clmm_pool_list.is_empty() {
+                        mint_config.raydium_clmm_pool_list = Some(discovered.raydium_clmm_pool_list);
+                    }
+                }
+                if mint_config.pump_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.pump_pool_list.is_empty() {
+                        mint_config.pump_pool_list = Some(discovered.pump_pool_list);
+                    }
+                }
+                if mint_config.meteora_dlmm_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.meteora_dlmm_pool_list.is_empty() {
+                        mint_config.meteora_dlmm_pool_list = Some(discovered.meteora_dlmm_pool_list);
+                    }
+                }
+                if mint_config.meteora_damm_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.meteora_damm_pool_list.is_empty() {
+                        mint_config.meteora_damm_pool_list = Some(discovered.meteora_damm_pool_list);
+                    }
+                }
+                if mint_config.meteora_damm_v2_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.meteora_damm_v2_pool_list.is_empty() {
+                        mint_config.meteora_damm_v2_pool_list = Some(discovered.meteora_damm_v2_pool_list);
+                    }
+                }
+                if mint_config.whirlpool_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.whirlpool_pool_list.is_empty() {
+                        mint_config.whirlpool_pool_list = Some(discovered.whirlpool_pool_list);
+                    }
+                }
+                if mint_config.solfi_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.solfi_pool_list.is_empty() {
+                        mint_config.solfi_pool_list = Some(discovered.solfi_pool_list);
+                    }
+                }
+                if mint_config.vertigo_pool_list.as_ref().map_or(true, |v| v.is_empty()) {
+                    if !discovered.vertigo_pool_list.is_empty() {
+                        mint_config.vertigo_pool_list = Some(discovered.vertigo_pool_list);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to discover pools for {}: {:?}", mint_config.mint, e);
             }
         }
     }
