@@ -43,3 +43,7 @@ private_key = ""
 [kamino_flashloan]
 # Enable Kamino flashloan
 enabled = true
+
+[bitquery]
+# API key for Bitquery GraphQL endpoint
+api_key = ""

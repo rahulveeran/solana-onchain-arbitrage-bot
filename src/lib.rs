@@ -3,5 +3,6 @@ pub mod config;
 pub mod constants;
 pub mod dex;
 pub mod pools;
+pub mod discovery;
 pub mod refresh;
 pub mod transaction;
